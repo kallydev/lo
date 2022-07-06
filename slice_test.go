@@ -1,6 +1,8 @@
 package lo
 
 import (
+	"errors"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -69,6 +71,27 @@ func TestFilterMap(t *testing.T) {
 	is.Equal(len(r2), 2)
 	is.Equal(r1, []string{"2", "4"})
 	is.Equal(r2, []string{"xpu", "xpu"})
+}
+
+func TestMapWithError(t *testing.T) {
+	is := assert.New(t)
+
+	result1, err1 := MapWithError[int, string]([]int{1, 2, 3, 4}, func(x int, _ int) (string, error) {
+		return "Hello", nil
+	})
+	result2, err2 := MapWithError[int64, int64]([]int64{1, 2, 3, 4}, func(x int64, _ int) (int64, error) {
+		if x == 4 {
+			return 0, errors.New("x is 4")
+		}
+		return x, nil
+	})
+
+	is.Equal(len(result1), 4)
+	is.Equal(result1, []string{"Hello", "Hello", "Hello", "Hello"})
+	is.Nil(err1)
+
+	is.Nil(result2)
+	is.Equal(err2, fmt.Errorf("x is 4"))
 }
 
 func TestFlatMap(t *testing.T) {
@@ -416,6 +439,42 @@ func TestSubset(t *testing.T) {
 	is.Equal([]int{1, 2, 3, 4}, out12)
 }
 
+func TestSlice(t *testing.T) {
+	is := assert.New(t)
+
+	in := []int{0, 1, 2, 3, 4}
+
+	out1 := Slice(in, 0, 0)
+	out2 := Slice(in, 0, 1)
+	out3 := Slice(in, 0, 5)
+	out4 := Slice(in, 0, 6)
+	out5 := Slice(in, 1, 1)
+	out6 := Slice(in, 1, 5)
+	out7 := Slice(in, 1, 6)
+	out8 := Slice(in, 4, 5)
+	out9 := Slice(in, 5, 5)
+	out10 := Slice(in, 6, 5)
+	out11 := Slice(in, 6, 6)
+	out12 := Slice(in, 1, 0)
+	out13 := Slice(in, 5, 0)
+	out14 := Slice(in, 6, 4)
+
+	is.Equal([]int{}, out1)
+	is.Equal([]int{0}, out2)
+	is.Equal([]int{0, 1, 2, 3, 4}, out3)
+	is.Equal([]int{0, 1, 2, 3, 4}, out4)
+	is.Equal([]int{}, out5)
+	is.Equal([]int{1, 2, 3, 4}, out6)
+	is.Equal([]int{1, 2, 3, 4}, out7)
+	is.Equal([]int{4}, out8)
+	is.Equal([]int{}, out9)
+	is.Equal([]int{}, out10)
+	is.Equal([]int{}, out11)
+	is.Equal([]int{}, out12)
+	is.Equal([]int{}, out13)
+	is.Equal([]int{}, out14)
+}
+
 func TestReplace(t *testing.T) {
 	is := assert.New(t)
 
@@ -454,4 +513,45 @@ func TestReplaceAll(t *testing.T) {
 
 	is.Equal([]int{42, 1, 42, 1, 2, 3, 42}, out1)
 	is.Equal([]int{0, 1, 0, 1, 2, 3, 0}, out2)
+}
+
+func TestCompact(t *testing.T) {
+	is := assert.New(t)
+
+	r1 := Compact([]int{2, 0, 4, 0})
+
+	is.Equal(r1, []int{2, 4})
+
+	r2 := Compact([]string{"", "foo", "", "bar", ""})
+
+	is.Equal(r2, []string{"foo", "bar"})
+
+	r3 := Compact([]bool{true, false, true, false})
+
+	is.Equal(r3, []bool{true, true})
+
+	type foo struct {
+		bar int
+		baz string
+	}
+
+	// slice of structs
+	// If all fields of an element are zero values, Compact removes it.
+
+	r4 := Compact([]foo{
+		{bar: 1, baz: "a"}, // all fields are non-zero values
+		{bar: 0, baz: ""},  // all fields are zero values
+		{bar: 2, baz: ""},  // bar is non-zero
+	})
+
+	is.Equal(r4, []foo{{bar: 1, baz: "a"}, {bar: 2, baz: ""}})
+
+	// slice of pointers to structs
+	// If an element is nil, Compact removes it.
+
+	e1, e2, e3 := foo{bar: 1, baz: "a"}, foo{bar: 0, baz: ""}, foo{bar: 2, baz: ""}
+	// NOTE: e2 is a zero value of foo, but its pointer &e2 is not a zero value of *foo.
+	r5 := Compact([]*foo{&e1, &e2, nil, &e3})
+
+	is.Equal(r5, []*foo{&e1, &e2, &e3})
 }
