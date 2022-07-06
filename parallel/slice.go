@@ -7,7 +7,7 @@ import (
 
 // Map manipulates a slice and transforms it to a slice of another type.
 // `iteratee` is call in parallel. Result keep the same order.
-// You also can control the conurrency limit by optional ParallelOption to limit the maximum number of
+// You also can control the concurrency limit by optional ParallelOption to limit the maximum number of
 // concurrent `iteratee` goroutines running at the same time, just like
 // `parallel.Map(list, iteratee, parallel.Option().Concurrency(10))`.
 func Map[T any, R any](collection []T, iteratee func(T, int) R, options ...*Option) []R {
@@ -25,19 +25,39 @@ func Map[T any, R any](collection []T, iteratee func(T, int) R, options ...*Opti
 // MapWithError manipulates a slice and transforms it to a slice of another type.
 // `iteratee` is called in parallel. Result keep the same order.
 // Any error returned by `iteratee` cancels the remaining go routines and returns an error.
-func MapWithError[T any, R any](collection []T, iteratee func(T, int) (R, error)) ([]R, error) {
+// You also can control the concurrency limit by optional ParallelOption to limit the maximum number of
+// concurrent `iteratee` goroutines running at the same time, just like
+// `parallel.MapWithError(list, iteratee, parallel.Option().Concurrency(10))`.
+func MapWithError[T any, R any](collection []T, iteratee func(T, int) (R, error), options ...*Option) ([]R, error) {
 	result := make([]R, len(collection))
 
 	var wg sync.WaitGroup
 	var errOnce sync.Once
 	var wgErr error
+	var concurrencyLimiter chan bool
+
 	_, cancel := context.WithCancel(context.Background())
+
+	option := mergeOptions(options)
+	if option.concurrencySetted {
+		concurrencyLimiter = make(chan bool, option.concurrency)
+	}
 
 	wg.Add(len(collection))
 
 	for i, item := range collection {
+		if concurrencyLimiter != nil {
+			concurrencyLimiter <- true
+		}
+
 		go func(_item T, _i int) {
-			defer wg.Done()
+			defer func() {
+				wg.Done()
+
+				if concurrencyLimiter != nil {
+					<-concurrencyLimiter
+				}
+			}()
 
 			res, err := iteratee(_item, _i)
 			if err != nil {
@@ -59,7 +79,7 @@ func MapWithError[T any, R any](collection []T, iteratee func(T, int) (R, error)
 
 // ForEach iterates over elements of collection and invokes iteratee for each element.
 // `iteratee` is call in parallel.
-// You also can control the conurrency limit by optional ParallelOption to limit the maximum number of
+// You also can control the concurrency limit by optional ParallelOption to limit the maximum number of
 // concurrent `iteratee` goroutines running at the same time, just like
 // `parallel.ForEach(list, iteratee, parallel.Option().Concurrency(10))`.
 func ForEach[T any](collection []T, iteratee func(T, int), options ...*Option) {
@@ -92,7 +112,7 @@ func ForEach[T any](collection []T, iteratee func(T, int), options ...*Option) {
 // Times invokes the iteratee n times, returning an array of the results of each invocation.
 // The iteratee is invoked with index as argument.
 // `iteratee` is call in parallel.
-// You also can control the conurrency limit by optional ParallelOption to limit the maximum number of
+// You also can control the concurrency limit by optional ParallelOption to limit the maximum number of
 // concurrent `iteratee` goroutines running at the same time, just like
 // `parallel.Times(count, iteratee, parallel.Option().Concurrency(10))`.
 func Times[T any](count int, iteratee func(int) T, options ...*Option) []T {
@@ -129,7 +149,7 @@ func Times[T any](count int, iteratee func(int) T, options ...*Option) []T {
 
 // GroupBy returns an object composed of keys generated from the results of running each element of collection through iteratee.
 // `iteratee` is call in parallel.
-// You also can control the conurrency limit by optional ParallelOption to limit the maximum number of
+// You also can control the concurrency limit by optional ParallelOption to limit the maximum number of
 // concurrent `iteratee` goroutines running at the same time, just like
 // `parallel.GroupBy(list, iteratee, parallel.Option().Concurrency(10))`.
 func GroupBy[T any, U comparable](collection []T, iteratee func(T) U, options ...*Option) map[U][]T {
@@ -152,7 +172,7 @@ func GroupBy[T any, U comparable](collection []T, iteratee func(T) U, options ..
 // determined by the order they occur in collection. The grouping is generated from the results
 // of running each element of collection through iteratee.
 // `iteratee` is call in parallel.
-// You also can control the conurrency limit by optional ParallelOption to limit the maximum number of
+// You also can control the concurrency limit by optional ParallelOption to limit the maximum number of
 // concurrent `iteratee` goroutines running at the same time, just like
 // `parallel.PartitionBy(list, iteratee, parallel.Option().Concurrency(10))`.
 func PartitionBy[T any, K comparable](collection []T, iteratee func(x T) K, options ...*Option) [][]T {
