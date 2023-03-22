@@ -34,20 +34,20 @@ func MapWithError[T any, R any](collection []T, iteratee func(T, int) (R, error)
 	var wg sync.WaitGroup
 	var errOnce sync.Once
 	var wgErr error
-	var concurrencyLimiter chan bool
+	var concurrencyLimiter chan struct{}
 
 	_, cancel := context.WithCancel(context.Background())
 
 	option := mergeOptions(options)
 	if option.concurrencySetted {
-		concurrencyLimiter = make(chan bool, option.concurrency)
+		concurrencyLimiter = make(chan struct{}, option.concurrency)
 	}
 
 	wg.Add(len(collection))
 
 	for i, item := range collection {
 		if concurrencyLimiter != nil {
-			concurrencyLimiter <- true
+			concurrencyLimiter <- struct{}{}
 		}
 
 		go func(_item T, _i int) {
@@ -84,18 +84,18 @@ func MapWithError[T any, R any](collection []T, iteratee func(T, int) (R, error)
 // `parallel.ForEach(list, iteratee, parallel.Option().Concurrency(10))`.
 func ForEach[T any](collection []T, iteratee func(T, int), options ...*Option) {
 	var wg sync.WaitGroup
-	var concurrencyLimiter chan bool
+	var concurrencyLimiter chan struct{}
 
 	option := mergeOptions(options)
 	if option.concurrencySetted {
-		concurrencyLimiter = make(chan bool, option.concurrency)
+		concurrencyLimiter = make(chan struct{}, option.concurrency)
 	}
 
 	wg.Add(len(collection))
 
 	for i, item := range collection {
 		if concurrencyLimiter != nil {
-			concurrencyLimiter <- true
+			concurrencyLimiter <- struct{}{}
 		}
 		go func(_item T, _i int) {
 			iteratee(_item, _i)
@@ -116,11 +116,11 @@ func ForEach[T any](collection []T, iteratee func(T, int), options ...*Option) {
 // concurrent `iteratee` goroutines running at the same time, just like
 // `parallel.Times(count, iteratee, parallel.Option().Concurrency(10))`.
 func Times[T any](count int, iteratee func(int) T, options ...*Option) []T {
-	var concurrencyLimiter chan bool
+	var concurrencyLimiter chan struct{}
 
 	option := mergeOptions(options)
 	if option.concurrencySetted {
-		concurrencyLimiter = make(chan bool, option.concurrency)
+		concurrencyLimiter = make(chan struct{}, option.concurrency)
 	}
 
 	result := make([]T, count)
@@ -129,7 +129,7 @@ func Times[T any](count int, iteratee func(int) T, options ...*Option) []T {
 	wg.Add(count)
 	for i := 0; i < count; i++ {
 		if concurrencyLimiter != nil {
-			concurrencyLimiter <- true
+			concurrencyLimiter <- struct{}{}
 		}
 		go func(_i int) {
 			defer func() {
